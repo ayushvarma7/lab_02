@@ -3,7 +3,7 @@ import os
 import pickle
 import pandas as pd
 from sklearn.compose import make_column_transformer
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -81,12 +81,12 @@ def separate_data_outputs(file_path: str) -> str:
 
 def build_model(file_path: str, filename: str) -> str:
     """
-    Train LR model and save to MODEL_DIR/filename. Returns model path.
+    Train a Random Forest model and save to MODEL_DIR/filename. Returns model path.
     """
     with open(file_path, "rb") as f:
         X_train, X_test, y_train, y_test = pickle.load(f)
 
-    model = LogisticRegression()
+    model = RandomForestClassifier(n_estimators=200, random_state=42)
     model.fit(X_train, y_train)
 
     model_path = os.path.join(MODEL_DIR, filename)
@@ -109,6 +109,8 @@ def load_model(file_path: str, filename: str) -> dict:
     preds = model.predict(X_test)
     metrics = {
         "accuracy": round(float(accuracy_score(y_test, preds)), 4),
+        "precision": round(float(precision_score(y_test, preds)), 4),
+        "recall": round(float(recall_score(y_test, preds)), 4),
         "f1": round(float(f1_score(y_test, preds)), 4),
         "first_prediction": int(preds[0]),
     }
