@@ -19,4 +19,4 @@ __pycache__/
 *.pyc
 
 # Leftovers from the original lab
-cookies.txt
+cookies.txt.DS_Store
