@@ -1,5 +1,5 @@
-apache-airflow
-dvc[gs]
+apache-airflow==3.3.2
+apache-airflow-providers-smtp==3.1.1
 flask
 scikit-learn
 scipy

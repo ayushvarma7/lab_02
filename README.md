@@ -1,6 +1,6 @@
 # Airflow Lab 2: ML Pipeline with a Quality Gate, Email Alerts, and a Flask Status Page
 
-This lab uses **Apache Airflow 3** to orchestrate a small machine learning pipeline. It trains a logistic regression model on an advertising dataset, evaluates it, decides through a **quality gate** whether the model is accepted, emails the result, and then starts a **Flask web page** that reports the status of the latest pipeline run by querying Airflow's REST API.
+This lab uses **Apache Airflow 3** to orchestrate a small machine learning pipeline. It trains a **Random Forest** model on an advertising dataset, evaluates it, decides through a **quality gate** whether the model is accepted, emails the result, and then starts a **Flask web page** that reports the status of the latest pipeline run by querying Airflow's REST API.
 
 **Author:** Ayush Varma ([@ayushvarma7](https://github.com/ayushvarma7))
 **Repository:** [github.com/ayushvarma7/lab_02](https://github.com/ayushvarma7/lab_02)
@@ -35,8 +35,8 @@ flowchart LR
 | `load_data_task` | Reads `advertising.csv` and saves it as a pickle in `working_data/` |
 | `data_preprocessing_task` | Drops text columns, splits train/test (70/30), scales features |
 | `separate_data_outputs_task` | Passes the preprocessed file path through |
-| `build_save_model_task` | Trains `LogisticRegression` and saves it to `model/model.sav` |
-| `load_model_task` | Reloads the model, evaluates it on the test set, returns accuracy and F1 |
+| `build_save_model_task` | Trains a `RandomForestClassifier` and saves it to `model/model.sav` |
+| `load_model_task` | Reloads the model, evaluates it on the test set, returns accuracy, precision, recall, and F1 |
 | `quality_gate_task` | Compares accuracy with the `accuracy_threshold` Param and picks one email branch |
 | `send_accepted_email` / `send_rejection_email` | Emails the result; the branch not chosen is skipped |
 | `my_trigger_task` | Starts the `WebService_Flask` DAG (runs whichever branch was taken) |
@@ -55,15 +55,24 @@ Tasks hand data to each other as **file paths** through XCom. The actual DataFra
 
 **New behavior:**
 
-1. `load_model` (in `dags/src/model_development.py`) now **returns a metrics dict** (`accuracy`, `f1`, `first_prediction`) instead of the first prediction. Values are cast to plain `float`/`int` so they are JSON-serializable for XCom.
+1. `load_model` (in `dags/src/model_development.py`) now **returns a metrics dict** instead of the first prediction. Values are cast to plain `float`/`int` so they are JSON-serializable for XCom.
 2. A new **`BranchPythonOperator`** (`quality_gate_task`) pulls those metrics from XCom and compares accuracy with a threshold. It returns the `task_id` of the branch to follow; Airflow marks the other branch as **skipped**.
-3. The threshold is a **DAG Param** (`accuracy_threshold`, default `0.9`, limited to 0 to 1). It can be changed per run from the trigger form in the UI, without editing code.
+3. The threshold is a **DAG Param** (`accuracy_threshold`, default `0.9`). It can be changed per run from the trigger form in the UI, without editing code.
 4. Two email tasks replace the single original one: **`send_accepted_email`** and **`send_rejection_email`**.
 5. Both branches join into `my_trigger_task`, which keeps `TriggerRule.ALL_DONE`. Skipped counts as done, so the Flask status page starts on both paths, and also when something fails.
 
 **Airflow concepts used:** `BranchPythonOperator`, XCom (`ti.xcom_pull`), DAG `params`, context injection (`ti`, `params`), skip propagation, and trigger rules on a join task.
 
-<!-- Add Change 2 and Change 3 sections here in the same format once implemented. -->
+### Change 2: Random Forest instead of Logistic Regression
+
+**Original behavior:** `build_model` trained a `LogisticRegression`, and only accuracy was reported.
+
+**New behavior:**
+
+1. `build_model` now trains a **`RandomForestClassifier`** (200 trees, `random_state=42` for reproducible results).
+2. `load_model` reports **precision and recall** in addition to accuracy and F1. The metrics dict is: `accuracy`, `precision`, `recall`, `f1`, `first_prediction`.
+
+The quality gate and emails need no changes, because they read the same metrics dict from XCom.
 
 ### Supporting changes needed to run the lab locally on Airflow 3
 
@@ -85,8 +94,8 @@ These are not the graded changes, but without them the lab does not run outside 
 |---|---|---|
 | OS | macOS or Linux | Windows users: use WSL2 |
 | Python | **3.12** | Airflow 3 does not support Python 3.14. Tested with Homebrew Python 3.12 |
-| apache-airflow | `FILL_IN` | Output of `airflow version` |
-| apache-airflow-providers-smtp | `FILL_IN` | Output of `pip show apache-airflow-providers-smtp` |
+| apache-airflow | **3.3.2** | Pinned in `requirements.txt` |
+| apache-airflow-providers-smtp | **3.1.1** | Pinned in `requirements.txt`; provides `EmailOperator` |
 | Git | any recent | |
 | Gmail account | with 2-Step Verification on | Needed to create an App Password for sending email |
 
@@ -199,7 +208,8 @@ Go to [http://localhost:8080](http://localhost:8080) and log in as `admin` with 
 
 **Accept path (threshold 0.9):**
 
-* Grid view: all tasks green except `send_accepted_email`'s sibling `send_rejection_email`, which shows **skipped**.
+* Grid view: all tasks green except `send_rejection_email`, which shows **skipped**.
+* `load_model_task` log: `Model metrics on test data: {'accuracy': ..., 'precision': ..., 'recall': ..., 'f1': ..., ...}`.
 * `quality_gate_task` log: `Model accuracy: 0.9xxx vs threshold=0.9`.
 * Email received: **"Notification from Airflow"**.
 * `WebService_Flask` has a **running** run (the Flask server).
@@ -237,8 +247,6 @@ Reject path screenshots (trigger with accuracy_threshold = 0.99), then uncomment
 
 ![Rejection email](images/Rejection_email.png)
 -->
-
-
 
 ---
 
